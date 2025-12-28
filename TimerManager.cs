@@ -5,32 +5,52 @@ using System.Collections.Generic;
 using Godot;
 
 public partial class TimerManager : Node {
+	const string GENERIC_LOG_TIMER_MANAGER = "Timer Manager Log";
+
 	public static TimerManager Instance { get; private set; }
 
-	static List<Timer> PendingTimers = new();
-	List<Timer> Timers = new();
+	static LinkedList<WeakReference<Timer>> PendingTimers = new();
+	LinkedList<WeakReference<Timer>> Timers = new();
 	
 	public override void _EnterTree() {
 		Instance = this;
 		ProcessMode = ProcessModeEnum.Always;
-		
-		Timers.AddRange(PendingTimers);
+
+		foreach(WeakReference<Timer> timer in PendingTimers)
+			Timers.AddLast(timer);
+
+		if(PendingTimers.Count != 0) 
+			GD.Print($"{GENERIC_LOG_TIMER_MANAGER}:\nTimers moved from pending static list to active one: {PendingTimers.Count}");
+			
 		PendingTimers.Clear();
+
+		Performance.AddCustomMonitor("Timers/Active_Count", Callable.From(() => Timers.Count));
+    	Performance.AddCustomMonitor("Timers/Pending_Count", Callable.From(() => PendingTimers.Count));
 	}
 
 	public override void _Process(double delta) {
 		float dt = (float)delta;
 
-		for(int i=Timers.Count-1; i >= 0; --i)
-			Timers[i].Tick(dt);
+		LinkedListNode<WeakReference<Timer>> currentNode = Timers.First;
+
+		while(currentNode != null) {
+			LinkedListNode<WeakReference<Timer>> nextNode = currentNode.Next;
+			
+			if(currentNode.Value.TryGetTarget(out Timer timer))
+				timer.Tick(dt);
+			else
+				Timers.Remove(currentNode);
+
+			currentNode = nextNode;
+		}
 	}
 
 	public override void _ExitTree() {
-		foreach(Timer timer in Timers)
-			timer?.Dispose();
+		foreach(WeakReference<Timer> timerRef in Timers)
+			if(timerRef.TryGetTarget(out Timer timer))
+				timer.Dispose();
 
 		Timers.Clear();
-
 		Instance = null;
 	}
 
@@ -51,7 +71,9 @@ public partial class TimerManager : Node {
 	}
 
 	public class Timer : IDisposable {
-		const string GENERIC_ERROR = "Failed to create `Timer`";
+		const string GENERIC_ERROR_TIMER = "Failed to create `Timer`";
+
+		LinkedListNode<WeakReference<Timer>> timerListRef;
 
 		TimerConfig Config;
 		public event Action OnStart, OnTick, Timeout, OnStop;
@@ -63,7 +85,7 @@ public partial class TimerManager : Node {
 			this.Config = Config;
 
 			if(Config.MaxTime < 0f) {
-				GD.PrintErr($"{GENERIC_ERROR}:\nMaxTime is negative");
+				GD.PushError($"{GENERIC_ERROR_TIMER}:\nMaxTime is negative");
 
 				isDisposed = true;
 				return;
@@ -71,8 +93,10 @@ public partial class TimerManager : Node {
 			
 			if(Config.AutoStart) Time = Config.MaxTime;
 
-			if(Instance == null) PendingTimers.Add(this);
-			else Instance.Timers.Add(this);
+			WeakReference<Timer> timerWeakRef = new (this);
+
+			if(Instance == null) timerListRef = PendingTimers.AddLast(timerWeakRef);
+			else timerListRef = Instance.Timers.AddLast(timerWeakRef);
 		}
 
 		~Timer() => Dispose();
@@ -137,13 +161,12 @@ public partial class TimerManager : Node {
 
 		public void Dispose() {
 			if(isDisposed) return;
-
 			isDisposed = true;
+
+			if(timerListRef.List != null)
+				timerListRef.List.Remove(timerListRef);
+
 			OnStart = OnTick = Timeout = OnStop = null;
-
-			if(Instance != null) Instance.Timers.Remove(this);
-			else PendingTimers.Remove(this);
-
 			GC.SuppressFinalize(this);
 		}
 	}
