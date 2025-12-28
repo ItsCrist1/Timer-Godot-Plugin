@@ -39,26 +39,27 @@ public partial class TimerManager : Node {
 		public bool AutoRefresh { get; set; }
 		public bool AutoStart { get; set; }
 		public bool TickOnPause { get; set; }
+		public bool DisposeOnTimeout { get; set; }
+	}
+
+	public static Timer Create(TimerConfig Config = default)
+		=> new (Config);
+
+	public static Timer CreateLooping(TimerConfig Config = default) {
+		Config.AutoRefresh = true;
+		return new (Config);
 	}
 
 	public class Timer : IDisposable {
 		const string GENERIC_ERROR = "Failed to create `Timer`";
 
 		TimerConfig Config;
-		public event Action Timeout;
+		public event Action OnStart, OnTick, Timeout, OnStop;
 		public float Time { private get; set; }
 
 		bool isPaused, isDisposed;
 
-		public static Timer Create(TimerConfig Config = default)
-			=> new (Config);
-
-		public static Timer CreateLooping(TimerConfig Config = default) {
-			Config.AutoRefresh = true;
-			return new (Config);
-		}
-
-		Timer (TimerConfig Config = default) {
+		internal Timer (TimerConfig Config = default) {
 			this.Config = Config;
 
 			if(Config.MaxTime < 0f) {
@@ -76,24 +77,29 @@ public partial class TimerManager : Node {
 
 		~Timer() => Dispose();
 
-		public void Tick(float dt) {
+		internal void Tick(float dt) {
 			if(isDisposed || isPaused || Time <= 0f 
 			|| (!Config.TickOnPause && Engine.TimeScale == 0f))
 				return;
 
 			Time -= dt;
+			OnTick?.Invoke();
 
 			if(Time <= 0f) {
 				Timeout?.Invoke();
 				if(Config.AutoRefresh) Time = Config.MaxTime;
+				if(Config.DisposeOnTimeout) Dispose();
 			}
 		}
 
 		public void Start(float maxTime=float.NaN) {
 			if(isDisposed) return;
 
+			OnStart?.Invoke();
+
 			if(maxTime == 0f) {
 				Timeout?.Invoke();
+				if(Config.DisposeOnTimeout) Dispose();
 				return;
 			}
 
@@ -117,6 +123,8 @@ public partial class TimerManager : Node {
 		public void Stop() {
 			if(isDisposed) return;
 
+			OnStop?.Invoke();
+
 			Time = 0f;
 			Resume();
 		}
@@ -131,7 +139,7 @@ public partial class TimerManager : Node {
 			if(isDisposed) return;
 
 			isDisposed = true;
-			Timeout = null;
+			OnStart = OnTick = Timeout = OnStop = null;
 
 			if(Instance != null) Instance.Timers.Remove(this);
 			else PendingTimers.Remove(this);
