@@ -21,7 +21,7 @@ public partial class TimerManager : Node {
 
 		if(PendingTimers.Count != 0) 
 			GD.Print($"{GENERIC_LOG_TIMER_MANAGER}:\nTimers moved from pending static list to active one: {PendingTimers.Count}");
-			
+
 		PendingTimers.Clear();
 
 		Performance.AddCustomMonitor("Timers/Active_Count", Callable.From(() => Timers.Count));
@@ -70,6 +70,19 @@ public partial class TimerManager : Node {
 		return new (Config);
 	}
 
+	public static Timer CreateOneShotTimer(float maxTime, Action onTimeout) {
+		Timer timer = new Timer(
+			new() {
+				MaxTime = maxTime, 
+				AutoStart = true, 
+				DisposeOnTimeout = true }
+		);
+
+		timer.Timeout += onTimeout;
+
+		return timer;
+	}
+
 	public class Timer : IDisposable {
 		const string GENERIC_ERROR_TIMER = "Failed to create `Timer`";
 
@@ -111,7 +124,7 @@ public partial class TimerManager : Node {
 
 			if(Time <= 0f) {
 				Timeout?.Invoke();
-				if(Config.AutoRefresh) Time = Config.MaxTime;
+				if(Config.AutoRefresh) Time += Config.MaxTime;
 				if(Config.DisposeOnTimeout) Dispose();
 			}
 		}
