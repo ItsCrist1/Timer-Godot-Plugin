@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 
 using Godot;
@@ -75,7 +74,8 @@ public partial class TimerManager : Node {
 			new() {
 				MaxTime = maxTime, 
 				AutoStart = true, 
-				DisposeOnTimeout = true }
+				DisposeOnTimeout = true 
+			}
 		);
 
 		timer.Timeout += onTimeout;
