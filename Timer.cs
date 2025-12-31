@@ -3,38 +3,39 @@ using System.Collections.Generic;
 
 using Godot;
 
-public struct TimerConfig {
-	public float MaxTime { get; set; }
-	public bool AutoRefresh { get; set; }
-	public bool AutoStart { get; set; }
-	public bool TickOnPause { get; set; }
-	public bool DisposeOnTimeout { get; set; }
-}
-
 public class Timer : IDisposable {
 	const string GENERIC_ERROR_TIMER = "Failed to create `Timer`";
 
 	LinkedListNode<WeakReference<Timer>> timerListRef;
 
 	TimerConfig Config;
-	public event Action OnStart, OnTick, Timeout, OnStop;
+	public event Action OnStart, OnTick, OnTimeout, OnStop;
 	public float Time { private get; set; }
 
 	bool isPaused, isDisposed;
 
-	internal Timer(TimerConfig Config = default) {
-		this.Config = Config;
+	internal Timer(TimerConfig Config=null) {
+		this.Config = Config ?? new();
 
-		if(Config.MaxTime < 0f) {
-			GD.PushError($"{GENERIC_ERROR_TIMER}:\nMaxTime is negative");
-
-			isDisposed = true;
-			return;
-		}
+		if(isDisposed = !validateConfig(this.Config)) return;
 
 		if(Config.AutoStart) Time = Config.MaxTime;
 
 		timerListRef = TimerManager.RegisterTimer(new (this));
+	}
+
+	public void SetConfig(TimerConfig Config=null) {
+		if(isDisposed || Config == null || !validateConfig(Config)) return;
+		this.Config = Config;
+	}
+
+	bool validateConfig(TimerConfig Config) {
+		if(Config.MaxTime < 0f) {
+			GD.PushError($"{GENERIC_ERROR_TIMER}:\nMaxTime is negative");
+			return false;
+		}
+
+		return true;
 	}
 
 	~Timer() => Dispose();
@@ -48,8 +49,8 @@ public class Timer : IDisposable {
 		OnTick?.Invoke();
 
 		if(Time <= 0f) {
-			Timeout?.Invoke();
-			
+			OnTimeout?.Invoke();
+
 			if(Config.AutoRefresh) Time += Config.MaxTime;
 			if(Config.DisposeOnTimeout) Dispose();
 		}
@@ -61,7 +62,7 @@ public class Timer : IDisposable {
 		OnStart?.Invoke();
 
 		if(maxTime == 0f) {
-			Timeout?.Invoke();
+			OnTimeout?.Invoke();
 			if (Config.DisposeOnTimeout) Dispose();
 			return;
 		}
@@ -92,12 +93,6 @@ public class Timer : IDisposable {
 		Resume();
 	}
 
-	public bool IsGoing
-		=> !isPaused && Time > 0f;
-
-	public bool HasFinished
-		=> !isPaused && Time <= 0f;
-
 	public void Dispose() {
 		if(isDisposed) return;
 		isDisposed = true;
@@ -105,7 +100,13 @@ public class Timer : IDisposable {
 		if(timerListRef.List != null)
 			timerListRef.List.Remove(timerListRef);
 
-		OnStart = OnTick = Timeout = OnStop = null;
+		OnStart = OnTick = OnTimeout = OnStop = null;
 		GC.SuppressFinalize(this);
 	}
+
+	public bool IsGoing
+		=> !isPaused && Time > 0f;
+
+	public bool HasFinished
+		=> !isPaused && Time <= 0f;
 }

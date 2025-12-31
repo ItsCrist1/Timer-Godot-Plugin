@@ -56,24 +56,23 @@ public partial class TimerManager : Node {
 		Instance = null;
 	}
 
-	public static Timer Create(TimerConfig Config = default)
-		=> new (Config);
+	public static Timer Create(TimerConfig Config=null)
+		=> new (Config?.Duplicate() as TimerConfig ?? new());
 
-	public static Timer CreateLooping(TimerConfig Config = default) {
-		Config.AutoRefresh = true;
-		return new (Config);
+	public static Timer CreateLooping(TimerConfig Config=null) {
+		TimerConfig newConfig = Config ?? new();
+		newConfig.AutoRefresh = true;
+		return new (newConfig);
 	}
 
-	public static Timer CreateOneShotTimer(float maxTime, Action onTimeout) {
-		Timer timer = new Timer(
-			new() {
-				MaxTime = maxTime, 
-				AutoStart = true, 
-				DisposeOnTimeout = true 
-			}
-		);
+	public static Timer CreateOneShotTimer(float maxTime, Action onTimeout, TimerConfig Config=null) {
+		TimerConfig newConfig = Config ?? new();
+		newConfig.MaxTime = maxTime;
+		newConfig.AutoStart = newConfig.DisposeOnTimeout = true;
+		
+		Timer timer = new (newConfig);
 
-		timer.Timeout += onTimeout;
+		timer.OnTimeout += onTimeout;
 
 		return timer;
 	}
