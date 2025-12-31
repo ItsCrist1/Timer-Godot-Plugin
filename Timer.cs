@@ -6,6 +6,8 @@ using Godot;
 public class Timer : IDisposable {
 	const string GENERIC_ERROR_TIMER = "Failed to create `Timer`";
 
+	internal Timer tickSourceTimer;
+
 	LinkedListNode<WeakReference<Timer>> timerListRef;
 
 	TimerConfig Config;
@@ -21,7 +23,11 @@ public class Timer : IDisposable {
 
 		if(Config.AutoStart) Time = Config.MaxTime;
 
-		timerListRef = TimerManager.RegisterTimer(new (this));
+		timerListRef = TimerManager.RegisterTimer(
+			this, 
+			this.Config.TickRate, 
+			this.Config.TickFrequency
+		);
 	}
 
 	public void SetConfig(TimerConfig Config=null) {
@@ -96,6 +102,11 @@ public class Timer : IDisposable {
 	public void Dispose() {
 		if(isDisposed) return;
 		isDisposed = true;
+
+		tickSourceTimer?.Dispose();
+		tickSourceTimer = null;
+
+		TimerManager.UnregisterTimer(this, Config.TickRate);
 
 		if(timerListRef.List != null)
 			timerListRef.List.Remove(timerListRef);

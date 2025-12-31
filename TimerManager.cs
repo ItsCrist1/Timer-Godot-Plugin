@@ -1,58 +1,149 @@
 using System;
 using System.Collections.Generic;
-
+using System.Net;
 using Godot;
 
 public partial class TimerManager : Node {
 	const string GENERIC_LOG_TIMER_MANAGER = "Timer Manager Log";
+	const string GENERIC_LOG_TIMERS_NAME = "Normal";
+	const string GENERIC_LOG_ARBITRARY_TIMERS_NAME = "Arbitrary";
+
+	const string PERFORMANCE_MONITOR_CATEGORY_NAME = "Timer";
 
 	public static TimerManager Instance { get; private set; }
 
 	static LinkedList<WeakReference<Timer>> PendingTimers = new();
+	static LinkedList<WeakReference<Timer>> PendingArbitraryTimers = new();
 	LinkedList<WeakReference<Timer>> Timers = new();
+	LinkedList<WeakReference<Timer>> ArbitraryTimers = new();
 
-	public static LinkedListNode<WeakReference<Timer>> RegisterTimer(WeakReference<Timer> timerWeakRef)
-		=> Instance == null ? PendingTimers.AddLast(timerWeakRef) : Instance.Timers.AddLast(timerWeakRef);
+	static event Action<float> OnProcess, OnPhysicsProcess;
+
+	public static LinkedListNode<WeakReference<Timer>> RegisterTimer(Timer timer, TickRate TickRate, float TickFrequency) {
+
+		switch(TickRate) {
+			case TickRate.Process: OnProcess += timer.Tick; break;
+			case TickRate.PhysicsProcess: OnPhysicsProcess += timer.Tick; break;
+			
+			case TickRate.Arbitrary: {
+				Timer tickSourceTimer = CreateLooping (new() {
+					MaxTime = TickFrequency,
+					AutoStart = true,
+					TickOnPause = true
+				});
+
+				tickSourceTimer.OnTimeout += () => timer.Tick(TickFrequency);
+				timer.tickSourceTimer = tickSourceTimer;
+
+				WeakReference<Timer> tickSourceWeakRef = new (tickSourceTimer);
+
+				if(Instance == null) PendingArbitraryTimers.AddLast(tickSourceWeakRef);
+				else Instance.ArbitraryTimers.AddLast(tickSourceWeakRef);
+			} break;
+		}
+
+		WeakReference<Timer> timerWeakRef = new (timer);
+
+		return Instance == null 
+				? PendingTimers.AddLast(timerWeakRef) 
+				: Instance.Timers.AddLast(timerWeakRef);
+	}
+
+	public static void UnregisterTimer(Timer timer, TickRate TickRate) {
+		switch(TickRate) {
+			case TickRate.Process: OnProcess -= timer.Tick; break;
+			case TickRate.PhysicsProcess: OnPhysicsProcess -= timer.Tick; break;
+			
+			// case TickRate.Arbitrary: break;
+			// lifecycle of arbitrary timers *should* be handled by themselves... 
+		}
+	}
+
+	void MigratePendingTimers(LinkedList<WeakReference<Timer>> PendingTimers, LinkedList<WeakReference<Timer>> Timers, string timersLogName) {
+		foreach(WeakReference<Timer> timer in PendingTimers)
+			Timers.AddLast(timer);
+
+		if(PendingTimers.Count != 0) 
+			GD.Print($"{GENERIC_LOG_TIMER_MANAGER}:\n{timersLogName} timers moved from pending static list to active one: {PendingTimers.Count}");
+
+		PendingTimers.Clear();
+	}
+
+	void AddPerformanceMonitors() {
+		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Active_Count", Callable.From(() => Timers.Count));
+    	Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Pending_Count", Callable.From(() => PendingTimers.Count));
+		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Arbitrary_Count", Callable.From(() => ArbitraryTimers.Count));
+		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Pending_Arbitrary_Count", Callable.From(() => PendingArbitraryTimers.Count));
+	}
 	
 	public override void _EnterTree() {
 		Instance = this;
 		ProcessMode = ProcessModeEnum.Always;
 
-		foreach(WeakReference<Timer> timer in PendingTimers)
-			Timers.AddLast(timer);
+		MigratePendingTimers(PendingTimers, Instance.Timers, GENERIC_LOG_TIMERS_NAME);
+		MigratePendingTimers(PendingArbitraryTimers, Instance.ArbitraryTimers, GENERIC_LOG_ARBITRARY_TIMERS_NAME);
 
-		if(PendingTimers.Count != 0) 
-			GD.Print($"{GENERIC_LOG_TIMER_MANAGER}:\nTimers moved from pending static list to active one: {PendingTimers.Count}");
+		AddPerformanceMonitors();
+	}
 
-		PendingTimers.Clear();
+	void RemoveInvalidTimers(LinkedList<WeakReference<Timer>> Timers, string timersLogName) {
+		LinkedListNode<WeakReference<Timer>> currentNode = Timers.First;
+		uint removedCount = 0;
 
-		Performance.AddCustomMonitor("Timers/Active_Count", Callable.From(() => Timers.Count));
-    	Performance.AddCustomMonitor("Timers/Pending_Count", Callable.From(() => PendingTimers.Count));
+		while(currentNode != null) {
+			LinkedListNode<WeakReference<Timer>> nextNode = currentNode.Next;
+			
+			if(!currentNode.Value.TryGetTarget(out Timer _)) {
+				Timers.Remove(currentNode);
+				++removedCount;
+			}
+
+			currentNode = nextNode;
+		}
+
+		if(removedCount != 0)
+			GD.Print($"{GENERIC_LOG_TIMER_MANAGER}:\n{timersLogName} timers have had some timers removed for being invalid: {removedCount}");
 	}
 
 	public override void _Process(double delta) {
 		float dt = (float)delta;
 
-		LinkedListNode<WeakReference<Timer>> currentNode = Timers.First;
+		OnProcess?.Invoke(dt);
 
-		while(currentNode != null) {
-			LinkedListNode<WeakReference<Timer>> nextNode = currentNode.Next;
-			
-			if(currentNode.Value.TryGetTarget(out Timer timer))
-				timer.Tick(dt);
-			else
-				Timers.Remove(currentNode);
-
-			currentNode = nextNode;
-		}
+		RemoveInvalidTimers(Timers, GENERIC_LOG_TIMERS_NAME);
+		RemoveInvalidTimers(ArbitraryTimers, GENERIC_LOG_ARBITRARY_TIMERS_NAME);
 	}
 
-	public override void _ExitTree() {
+    public override void _PhysicsProcess(double delta) {
+		float dt = (float)delta;
+
+		OnPhysicsProcess?.Invoke(dt);
+    }
+
+	void ClearTimers(LinkedList<WeakReference<Timer>> Timers, string timersLogName) {
 		foreach(WeakReference<Timer> timerRef in Timers)
 			if(timerRef.TryGetTarget(out Timer timer))
 				timer.Dispose();
 
+		GD.Print($"{GENERIC_LOG_TIMER_MANAGER}:\n{timersLogName} timers have been cleared: {Timers.Count}");
+
 		Timers.Clear();
+	}
+
+	void RemovePerformanceMonitors() {
+    	Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Active_Count");
+    	Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Pending_Count");
+    	Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Arbitrary_Count");
+    	Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Pending_Arbitrary_Count");
+	}
+
+	public override void _ExitTree() {
+		ClearTimers(Timers, GENERIC_LOG_TIMERS_NAME);
+		ClearTimers(ArbitraryTimers, GENERIC_LOG_ARBITRARY_TIMERS_NAME);
+
+		RemovePerformanceMonitors();
+
+		OnProcess = OnPhysicsProcess = null;
 		Instance = null;
 	}
 
@@ -60,13 +151,13 @@ public partial class TimerManager : Node {
 		=> new (Config?.Duplicate() as TimerConfig ?? new());
 
 	public static Timer CreateLooping(TimerConfig Config=null) {
-		TimerConfig newConfig = Config ?? new();
+		TimerConfig newConfig = Config.Duplicate() as TimerConfig ?? new();
 		newConfig.AutoRefresh = true;
 		return new (newConfig);
 	}
 
 	public static Timer CreateOneShotTimer(float maxTime, Action onTimeout, TimerConfig Config=null) {
-		TimerConfig newConfig = Config ?? new();
+		TimerConfig newConfig = Config.Duplicate() as TimerConfig ?? new();
 		newConfig.MaxTime = maxTime;
 		newConfig.AutoStart = newConfig.DisposeOnTimeout = true;
 		

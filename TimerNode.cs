@@ -37,8 +37,8 @@ public partial class TimerNode : Node {
     public void Stop() => timer?.Stop();
     public void DisposeEarly() => timer?.Dispose();
 
-    public bool IsGoing => timer.IsGoing;
-    public bool HasFinished => timer.HasFinished;
+    public bool IsGoing => timer?.IsGoing ?? false;
+    public bool HasFinished => timer?.HasFinished ?? false;
 
     void _OnStart() => EmitSignal(SignalName.OnStart);
     void _OnTick() => EmitSignal(SignalName.OnTick);
