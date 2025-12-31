@@ -1,14 +1,19 @@
 using System;
 using System.Collections.Generic;
-using System.Net;
+
 using Godot;
 
 public partial class TimerManager : Node {
+	const string INVALID_CHECK_SETTING_KEY = "timer_plugin/invalid_timer_check_interval";
+	const string LOGGING_SETTING_KEY = "timer_plugin/log_messages";
+	const float TIME_BETWEEN_INVALID_TIMER_CHECKS_DEFAULT = 3f;
+
 	const string GENERIC_LOG_TIMER_MANAGER = "Timer Manager Log";
 	const string GENERIC_LOG_TIMERS_NAME = "Normal";
 	const string GENERIC_LOG_ARBITRARY_TIMERS_NAME = "Arbitrary";
 
 	const string PERFORMANCE_MONITOR_CATEGORY_NAME = "Timer";
+
 
 	public static TimerManager Instance { get; private set; }
 
@@ -19,8 +24,10 @@ public partial class TimerManager : Node {
 
 	static event Action<float> OnProcess, OnPhysicsProcess;
 
-	public static LinkedListNode<WeakReference<Timer>> RegisterTimer(Timer timer, TickRate TickRate, float TickFrequency) {
+	Timer checkForInvalidTimers = CreateLooping();
+	bool logMessages;
 
+	public static LinkedListNode<WeakReference<Timer>> RegisterTimer(Timer timer, TickRate TickRate, float TickFrequency) {
 		switch(TickRate) {
 			case TickRate.Process: OnProcess += timer.Tick; break;
 			case TickRate.PhysicsProcess: OnPhysicsProcess += timer.Tick; break;
@@ -63,7 +70,7 @@ public partial class TimerManager : Node {
 		foreach(WeakReference<Timer> timer in PendingTimers)
 			Timers.AddLast(timer);
 
-		if(PendingTimers.Count != 0) 
+		if(logMessages && PendingTimers.Count != 0) 
 			GD.Print($"{GENERIC_LOG_TIMER_MANAGER}:\n{timersLogName} timers moved from pending static list to active one: {PendingTimers.Count}");
 
 		PendingTimers.Clear();
@@ -71,11 +78,26 @@ public partial class TimerManager : Node {
 
 	void AddPerformanceMonitors() {
 		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Active_Count", Callable.From(() => Timers.Count));
-    	Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Pending_Count", Callable.From(() => PendingTimers.Count));
 		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Arbitrary_Count", Callable.From(() => ArbitraryTimers.Count));
-		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Pending_Arbitrary_Count", Callable.From(() => PendingArbitraryTimers.Count));
 	}
 	
+	void setupProjectSettings() {
+		bool changed = false;
+
+		if(!ProjectSettings.HasSetting(INVALID_CHECK_SETTING_KEY)) {
+			ProjectSettings.SetSetting(INVALID_CHECK_SETTING_KEY, TIME_BETWEEN_INVALID_TIMER_CHECKS_DEFAULT);
+			changed = true;
+		}
+
+		if(!ProjectSettings.HasSetting(LOGGING_SETTING_KEY)) {
+			ProjectSettings.SetSetting(LOGGING_SETTING_KEY, true);
+			changed = true;
+		}
+
+		if(changed)
+			ProjectSettings.Save();
+	}
+
 	public override void _EnterTree() {
 		Instance = this;
 		ProcessMode = ProcessModeEnum.Always;
@@ -83,10 +105,20 @@ public partial class TimerManager : Node {
 		MigratePendingTimers(PendingTimers, Instance.Timers, GENERIC_LOG_TIMERS_NAME);
 		MigratePendingTimers(PendingArbitraryTimers, Instance.ArbitraryTimers, GENERIC_LOG_ARBITRARY_TIMERS_NAME);
 
+		checkForInvalidTimers.OnTimeout += RemoveInvalidTimers;
+
+		setupProjectSettings();
+
+		checkForInvalidTimers.Start(
+			(float)ProjectSettings.GetSetting(INVALID_CHECK_SETTING_KEY)
+		);
+
+		logMessages = (bool)ProjectSettings.GetSetting(LOGGING_SETTING_KEY);
+
 		AddPerformanceMonitors();
 	}
 
-	void RemoveInvalidTimers(LinkedList<WeakReference<Timer>> Timers, string timersLogName) {
+	void RemoveInvalidTimersFromList(LinkedList<WeakReference<Timer>> Timers, string timersLogName) {
 		LinkedListNode<WeakReference<Timer>> currentNode = Timers.First;
 		uint removedCount = 0;
 
@@ -101,17 +133,21 @@ public partial class TimerManager : Node {
 			currentNode = nextNode;
 		}
 
-		if(removedCount != 0)
+		if(logMessages && removedCount != 0)
 			GD.Print($"{GENERIC_LOG_TIMER_MANAGER}:\n{timersLogName} timers have had some timers removed for being invalid: {removedCount}");
+	}
+
+	void RemoveInvalidTimers() {
+		if(Instance == null) return;
+
+		RemoveInvalidTimersFromList(Timers, GENERIC_LOG_TIMERS_NAME);
+		RemoveInvalidTimersFromList(ArbitraryTimers, GENERIC_LOG_ARBITRARY_TIMERS_NAME);
 	}
 
 	public override void _Process(double delta) {
 		float dt = (float)delta;
 
 		OnProcess?.Invoke(dt);
-
-		RemoveInvalidTimers(Timers, GENERIC_LOG_TIMERS_NAME);
-		RemoveInvalidTimers(ArbitraryTimers, GENERIC_LOG_ARBITRARY_TIMERS_NAME);
 	}
 
     public override void _PhysicsProcess(double delta) {
@@ -125,16 +161,15 @@ public partial class TimerManager : Node {
 			if(timerRef.TryGetTarget(out Timer timer))
 				timer.Dispose();
 
-		GD.Print($"{GENERIC_LOG_TIMER_MANAGER}:\n{timersLogName} timers have been cleared: {Timers.Count}");
+		if(logMessages)
+			GD.Print($"{GENERIC_LOG_TIMER_MANAGER}:\n{timersLogName} timers have been cleared: {Timers.Count}");
 
 		Timers.Clear();
 	}
 
 	void RemovePerformanceMonitors() {
     	Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Active_Count");
-    	Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Pending_Count");
     	Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Arbitrary_Count");
-    	Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Pending_Arbitrary_Count");
 	}
 
 	public override void _ExitTree() {
@@ -142,6 +177,11 @@ public partial class TimerManager : Node {
 		ClearTimers(ArbitraryTimers, GENERIC_LOG_ARBITRARY_TIMERS_NAME);
 
 		RemovePerformanceMonitors();
+
+		if(checkForInvalidTimers != null) {
+			checkForInvalidTimers.Dispose();
+			checkForInvalidTimers = null;
+		}
 
 		OnProcess = OnPhysicsProcess = null;
 		Instance = null;
@@ -151,7 +191,7 @@ public partial class TimerManager : Node {
 		=> new (Config?.Duplicate() as TimerConfig ?? new());
 
 	public static Timer CreateLooping(TimerConfig Config=null) {
-		TimerConfig newConfig = Config.Duplicate() as TimerConfig ?? new();
+		TimerConfig newConfig = Config?.Duplicate() as TimerConfig ?? new();
 		newConfig.AutoRefresh = true;
 		return new (newConfig);
 	}

@@ -10,21 +10,20 @@ public partial class TimerPluginInitializer : EditorPlugin {
 	const string CUSTOM_TYPE_SCRIPT = "TimerNode.cs";
 
 	public override void _EnterTree() {
+		string path = ((Resource)GetScript())
+						.ResourcePath.GetBaseDir();
+
 		AddAutoloadSingleton(
 			SINGLETON_NAME,
-			((Resource)GetScript())
-				.ResourcePath.GetBaseDir()
-				.PathJoin(SINGLETON_SCRIPT)
+			path.PathJoin(SINGLETON_SCRIPT)
 		);
 
-		Script script = GD.Load<Script>(
-            ((Resource)GetScript())
-                .ResourcePath.GetBaseDir()
-                .PathJoin(CUSTOM_TYPE_SCRIPT)
-        );
-        Texture2D icon = EditorInterface.Singleton.GetBaseControl().GetThemeIcon(nameof(Godot.Timer), "EditorIcons");
-
-        AddCustomType(CUSTOM_TYPE_NAME, nameof(Node), script, icon);
+        AddCustomType(
+			CUSTOM_TYPE_NAME, 
+			nameof(Node), 
+			GD.Load<Script>(path.PathJoin(CUSTOM_TYPE_SCRIPT)), 
+			EditorInterface.Singleton.GetBaseControl().GetThemeIcon(nameof(Godot.Timer), "EditorIcons")
+		);
 	}
 
 	public override void _ExitTree() {
