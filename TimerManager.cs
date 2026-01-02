@@ -197,7 +197,7 @@ public partial class TimerManager : Node {
 	}
 
 	public static Timer CreateOneShotTimer(float maxTime, Action onTimeout, TimerConfig Config=null) {
-		TimerConfig newConfig = Config.Duplicate() as TimerConfig ?? new();
+		TimerConfig newConfig = Config?.Duplicate() as TimerConfig ?? new();
 		newConfig.MaxTime = maxTime;
 		newConfig.AutoStart = newConfig.DisposeOnTimeout = true;
 		
