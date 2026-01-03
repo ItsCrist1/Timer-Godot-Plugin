@@ -7,7 +7,7 @@ public partial class TimerPluginInitializer : EditorPlugin {
     const string SINGLETON_SCRIPT = "TimerManager.cs";
 
 	const string CUSTOM_TYPE_NAME = "Custom Timer";
-	const string CUSTOM_TYPE_SCRIPT = "TimerNode.cs";
+	const string CUSTOM_TYPE_SCRIPT = "timer/TimerNode.cs";
 
 	public override void _EnterTree() {
 		string path = ((Resource)GetScript())
