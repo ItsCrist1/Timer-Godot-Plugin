@@ -6,7 +6,6 @@ using Godot;
 public partial class TimerManager : Node {
 	const string INVALID_CHECK_SETTING_KEY = "timer_plugin/invalid_timer_check_interval";
 	const string LOGGING_SETTING_KEY = "timer_plugin/log_messages";
-	const float TIME_BETWEEN_INVALID_TIMER_CHECKS_DEFAULT = 3f;
 
 	const string GENERIC_LOG_TIMER_MANAGER = "Timer Manager Log";
 	const string GENERIC_LOG_TIMERS_NAME = "Normal";
@@ -80,23 +79,6 @@ public partial class TimerManager : Node {
 		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Active_Count", Callable.From(() => Timers.Count));
 		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Arbitrary_Count", Callable.From(() => ArbitraryTimers.Count));
 	}
-	
-	void setupProjectSettings() {
-		bool changed = false;
-
-		if(!ProjectSettings.HasSetting(INVALID_CHECK_SETTING_KEY)) {
-			ProjectSettings.SetSetting(INVALID_CHECK_SETTING_KEY, TIME_BETWEEN_INVALID_TIMER_CHECKS_DEFAULT);
-			changed = true;
-		}
-
-		if(!ProjectSettings.HasSetting(LOGGING_SETTING_KEY)) {
-			ProjectSettings.SetSetting(LOGGING_SETTING_KEY, true);
-			changed = true;
-		}
-
-		if(changed)
-			ProjectSettings.Save();
-	}
 
 	public override void _EnterTree() {
 		Instance = this;
@@ -106,8 +88,6 @@ public partial class TimerManager : Node {
 		MigratePendingTimers(PendingArbitraryTimers, Instance.ArbitraryTimers, GENERIC_LOG_ARBITRARY_TIMERS_NAME);
 
 		checkForInvalidTimers.OnTimeout += RemoveInvalidTimers;
-
-		setupProjectSettings();
 
 		checkForInvalidTimers.Start(
 			(float)ProjectSettings.GetSetting(INVALID_CHECK_SETTING_KEY)

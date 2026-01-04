@@ -1,0 +1,6 @@
+{
+  "timer_plugin": {
+    "invalid_timer_check_interval": 3.0,
+    "log_messages": true
+  }
+}
