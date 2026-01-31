@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Reflection;
 using System.Collections.Generic;
 
@@ -6,21 +7,25 @@ using Godot;
 
 public partial class TimerManager : Node {
 	const string LOGGING_SETTING_KEY = "timer_plugin/log_messages";
-	const string META_SCAN_KEY = "timer_plugin_scanned";
+	const string META_SCAN_KEY = "timer_plugin_scanned"; // for reflection
 
 	const string GENERIC_LOG_TIMER_MANAGER = "Timer Manager Log";
 	const string GENERIC_LOG_TIMERS_NAME = "Normal";
-	const string GENERIC_LOG_ARBITRARY_TIMERS_NAME = "Arbitrary";
 
 	const string PERFORMANCE_MONITOR_CATEGORY_NAME = "Timer";
 
 
 	public static TimerManager Instance { get; private set; }
 
+	// allows for declaration of timers before initialization in `_EnterTree`
 	static LinkedList<Timer> PendingTimers = new();
 	LinkedList<Timer> Timers = new();
 
 	static event Action<float> OnProcess, OnPhysicsProcess;
+
+	// for the reflection dispose on `_ExitTree` system
+	static Dictionary<Type, FieldInfo[]> timerScanFieldCache = new();
+	
 	bool logMessages;
 
 	public static LinkedListNode<Timer> RegisterTimer(Timer timer, TickRate TickRate, float TickFrequency) {
@@ -28,6 +33,7 @@ public partial class TimerManager : Node {
 			case TickRate.Process: OnProcess += timer.Tick; break;
 			case TickRate.PhysicsProcess: OnPhysicsProcess += timer.Tick; break;
 			
+			// a timer using an arbitrary source manages its own looping arbitrary timer
 			case TickRate.Arbitrary: {
 				Timer tickSourceTimer = CreateLooping (new() {
 					MaxTime = TickFrequency,
@@ -116,15 +122,28 @@ public partial class TimerManager : Node {
 	}
 
 	public static void ScanRegisterTimers(Node owner) {
-		BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-
 		if(owner.HasMeta(META_SCAN_KEY)) return;
 		owner.SetMeta(META_SCAN_KEY, true);
+		
+		Type ownerType = owner.GetType();
 
-		foreach(FieldInfo field in owner.GetType().GetFields(flags))
-			if(field.FieldType == typeof(Timer)
-			&& field.GetValue(owner) is Timer timer)
-				owner.TreeExiting += timer.Dispose;
+		if(!timerScanFieldCache.TryGetValue(ownerType, out FieldInfo[] fields)) {
+			const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy;
+			fields = ownerType.GetFields(flags).Where(f => f.FieldType == typeof(Timer)).ToArray();
+			timerScanFieldCache[ownerType] = fields;
+		}
+
+		foreach(FieldInfo field in fields)
+			if(field.GetValue(owner) is Timer timer) {
+				Action disposeAction = null;
+				
+				disposeAction = () => {
+					timer.Dispose();
+					owner.TreeExiting -= disposeAction;
+				};
+
+				owner.TreeExiting += disposeAction;
+			}
 	}
 
 	public static Timer Create(TimerConfig Config=null)

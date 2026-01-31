@@ -12,7 +12,7 @@ public class Timer : IDisposable {
 
 	TimerConfig Config;
 	public event Action OnStart, OnTick, OnTimeout, OnStop;
-	public float Time { private get; set; }
+	public float Time { get; set; }
 
 	bool isPaused, isDisposed;
 
@@ -51,7 +51,8 @@ public class Timer : IDisposable {
 
 	internal void Tick(float dt) {
 		if(isDisposed || isPaused || Time <= 0f
-		||(!Config.TickOnPause && Engine.TimeScale == 0f))
+		|| (!Config.TickOnPause && GameBridge.Instance?.Tree?.Paused == true)
+		|| (!Config.TickOnZeroTimeScale && Engine.TimeScale == 0f))
 			return;
 
 		Time -= dt;

@@ -9,6 +9,7 @@ public partial class TimerConfig : Resource {
     [Export] public bool AutoRefresh = false;
     [Export] public bool AutoStart = false;
     [Export] public bool TickOnPause = false;
+    [Export] public bool TickOnZeroTimeScale = true;
     [Export] public bool DisposeOnTimeout = false;
 
     
