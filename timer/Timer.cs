@@ -8,7 +8,7 @@ public class Timer : IDisposable {
 
 	internal Timer tickSourceTimer;
 
-	LinkedListNode<WeakReference<Timer>> timerListRef;
+	LinkedListNode<Timer> timerListRef;
 
 	TimerConfig Config;
 	public event Action OnStart, OnTick, OnTimeout, OnStop;
@@ -24,11 +24,14 @@ public class Timer : IDisposable {
 		if(Config.AutoStart) Time = Config.MaxTime;
 
 		timerListRef = TimerManager.RegisterTimer(
-			this, 
+			this,
 			this.Config.TickRate, 
 			this.Config.TickFrequency
 		);
 	}
+
+	public void Migrate(LinkedListNode<Timer> timerListRef)
+		=> this.timerListRef = timerListRef;
 
 	public void SetConfig(TimerConfig Config=null) {
 		if(isDisposed || Config == null || !validateConfig(Config)) return;
@@ -108,8 +111,7 @@ public class Timer : IDisposable {
 
 		TimerManager.UnregisterTimer(this, Config.TickRate);
 
-		if(timerListRef.List != null)
-			timerListRef.List.Remove(timerListRef);
+		timerListRef?.List?.Remove(timerListRef);
 
 		OnStart = OnTick = OnTimeout = OnStop = null;
 		GC.SuppressFinalize(this);
