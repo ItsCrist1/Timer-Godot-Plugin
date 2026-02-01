@@ -1,4 +1,3 @@
-using System;
 using Godot;
 
 public partial class TimerNode : Node {
@@ -28,8 +27,7 @@ public partial class TimerNode : Node {
         timer = null;
     }
 
-
-    public void Start(float maxTime=float.NaN)
+    public void Start(float? maxTime=null)
         => timer?.Start(maxTime);
 
     public void Pause() => timer?.Pause();

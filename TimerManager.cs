@@ -120,7 +120,7 @@ public partial class TimerManager : Node {
 		OnProcess = OnPhysicsProcess = null;
 		Instance = null;
 	}
-
+	
 	public static void ScanRegisterTimers(Node owner) {
 		if(owner.HasMeta(META_SCAN_KEY)) return;
 		owner.SetMeta(META_SCAN_KEY, true);

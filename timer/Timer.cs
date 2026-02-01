@@ -66,7 +66,7 @@ public class Timer : IDisposable {
 		}
 	}
 
-	public void Start(float maxTime = float.NaN) {
+	public void Start(float? maxTime=null) {
 		if(isDisposed) return;
 
 		OnStart?.Invoke();
@@ -77,9 +77,7 @@ public class Timer : IDisposable {
 			return;
 		}
 
-		maxTime = float.IsNaN(maxTime) ? Config.MaxTime : maxTime;
-
-		Config.MaxTime = Time = maxTime;
+		Config.MaxTime = Time = maxTime ?? Config.MaxTime;
 
 		Resume();
 	}
