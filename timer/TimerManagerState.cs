@@ -1,5 +1,3 @@
-using Godot;
-
 public class TimerCount {
 	public uint Total {
 		get => Process + Physics + Arbitrary;
@@ -11,8 +9,26 @@ public class TimerCount {
 	public uint IsNode { get; set; }
 }
 
+public class TimerEventFireCount {
+	public uint OnStart { get; set; }
+	public uint OnTick { get; set; }
+	public uint OnTimeout { get; set; }
+	public uint OnStop { get; set; }
+
+    public void Reset()
+        => OnStart
+         = OnTick
+         = OnTimeout
+         = OnStop
+         = 0u;
+}
+
 public class TimerManagerState {
 	public TimerCount TimerCount { get; set; }
+	public TimerEventFireCount TimerEventFireCount { get; set; }
 
-	public TimerManagerState() => TimerCount = new();
+	public TimerManagerState() {
+		TimerCount = new();
+		TimerEventFireCount = new();
+	}
 }

@@ -11,6 +11,7 @@ public partial class TimerConfig : Resource {
     [Export] public bool TickOnPause = false;
     [Export] public bool TickOnZeroTimeScale = true;
     [Export] public bool DisposeOnTimeout = false;
+    [Export] public bool AlwaysTick = false;
 
     
     [ExportGroup("Tick Rate")]

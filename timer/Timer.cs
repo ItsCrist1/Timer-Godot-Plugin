@@ -47,7 +47,15 @@ public class Timer : IDisposable {
 	~Timer() => Dispose();
 
 	internal void Tick(float dt) {
-		if(isDisposed || isPaused || Time <= 0f
+		if(isDisposed)
+			return;
+
+		if(_Config.AlwaysTick) {
+			OnTick?.Invoke();
+			return;
+		}
+
+		if(isPaused || Time <= 0f
 		|| (!_Config.TickOnPause && GameBridge.Instance?.Tree?.Paused == true)
 		|| (!_Config.TickOnZeroTimeScale && Engine.TimeScale == 0f))
 			return;

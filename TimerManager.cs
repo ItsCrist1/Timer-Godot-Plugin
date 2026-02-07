@@ -7,6 +7,7 @@ using Godot;
 
 public partial class TimerManager : Node {
 	const string LOGGING_SETTING_KEY = "timer_plugin/log_messages";
+	const string MONITOR_EVENTS_SETTINGS_KEY = "timer_plugin/monitor_events_time";
 	const string META_SCAN_KEY = "timer_plugin_scanned"; // for reflection
 
 	const string PERFORMANCE_MONITOR_CATEGORY_NAME = "Timer";
@@ -16,9 +17,11 @@ public partial class TimerManager : Node {
 	static event Action<float> OnProcess, OnPhysicsProcess;
 	static event Action OnClear;
 
-	static Dictionary<Type, FieldInfo[]> timerScanFieldCache = new();
+	static Dictionary<Type, FieldInfo[]> timerScanFieldCache;
 	
 	static TimerManagerState state;
+
+	Timer eventUpdateTimer;
 	bool logMessages;
 
 	public static void RegisterTimer(Timer timer) {
@@ -54,10 +57,20 @@ public partial class TimerManager : Node {
 		OnClear += timer.Dispose;
 
 		if(!m) return;
+
+		timer.OnStart += OnStart;
+		timer.OnTick += OnTick;
+		timer.OnTimeout += OnTimeout;
+		timer.OnStop += OnStop;
 			
 		state.TimerCount.IsNode += timer.Config.IsNode ? 1u : 0u;
 		state.TimerCount.AutoRefreshing += timer.Config.AutoRefresh ? 1u : 0u;
 	}
+
+	static void OnStart() => ++state.TimerEventFireCount.OnStart;
+	static void OnTick() => ++state.TimerEventFireCount.OnTick;
+	static void OnTimeout() => ++state.TimerEventFireCount.OnTimeout;
+	static void OnStop() => ++state.TimerEventFireCount.OnStop;
 
 	public static void UnregisterTimer(Timer timer) {
 		bool m = timer.Config.DoMonitor;
@@ -83,6 +96,11 @@ public partial class TimerManager : Node {
 
 		if(!m) return;
 
+		timer.OnStart -= OnStart;
+		timer.OnTick -= OnTick;
+		timer.OnTimeout -= OnTimeout;
+		timer.OnStop -= OnStop;
+
 		state.TimerCount.IsNode -= timer.Config.IsNode && state.TimerCount.IsNode > 0 ? 1u : 0u;
 		state.TimerCount.AutoRefreshing -= timer.Config.AutoRefresh && state.TimerCount.AutoRefreshing > 0 ? 1u : 0u;
 	}
@@ -94,10 +112,16 @@ public partial class TimerManager : Node {
 		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Arbitrary Count", Callable.From(() => state.TimerCount.Arbitrary));
 		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Is Node Count", Callable.From(() => state.TimerCount.IsNode));
 		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Auto Refreshing Count", Callable.From(() => state.TimerCount.AutoRefreshing));
+
+		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Events/On Start", Callable.From(() => state.TimerEventFireCount.OnStart));
+		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Events/On Tick", Callable.From(() => state.TimerEventFireCount.OnTick));
+		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Events/On Timeout", Callable.From(() => state.TimerEventFireCount.OnTimeout));
+		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Events/On Stop", Callable.From(() => state.TimerEventFireCount.OnStop));
 	}
 
 	static TimerManager() {
 		state = new();
+		timerScanFieldCache = new();
 	}
 
 	public override void _EnterTree() {
@@ -106,9 +130,16 @@ public partial class TimerManager : Node {
 
 		ProcessMode = ProcessModeEnum.Always;
 
-		logMessages = (bool)ProjectSettings.GetSetting(LOGGING_SETTING_KEY);
+		logMessages = (bool)ProjectSettingsManager.Get(LOGGING_SETTING_KEY);
 
 		AddPerformanceMonitors();
+
+		eventUpdateTimer = CreateArbitrary(
+			new() { AlwaysTick = true },
+			(float)ProjectSettingsManager.Get(MONITOR_EVENTS_SETTINGS_KEY)
+		);
+
+		eventUpdateTimer.OnTick += state.TimerEventFireCount.Reset;
 	}
 
 	public override void _Process(double delta) {
@@ -128,11 +159,13 @@ public partial class TimerManager : Node {
 
 		OnProcess = OnPhysicsProcess = null;
 		OnClear = null;
-		state = null;
-
-		Instance = null;
 
 		RemovePerformanceMonitors();
+
+		eventUpdateTimer.Dispose();
+
+		state = null;
+		Instance = null;
 	}
 
 	void RemovePerformanceMonitors() {
@@ -142,6 +175,11 @@ public partial class TimerManager : Node {
 		Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Arbitrary Count");
 		Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Is Node Count");
 		Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Auto Refreshing Count");
+
+		Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Events/On Start");
+		Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Events/On Tick");
+		Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Events/On Timeout");
+		Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Events/On Stop");
 	}
 	
 	public static void ScanRegisterTimers(Node owner) {
@@ -172,9 +210,23 @@ public partial class TimerManager : Node {
 	public static Timer Create(TimerConfig Config=null)
 		=> new (Config?.Clone() ?? new());
 
+	public static Timer Create(float MaxTime, TimerConfig Config=null) {
+		TimerConfig newConfig = Config?.Clone() ?? new();
+		newConfig.MaxTime = MaxTime;
+		return new (newConfig);
+	}
+
 	public static Timer CreateLooping(TimerConfig Config=null) {
 		TimerConfig newConfig = Config?.Clone() ?? new();
 		newConfig.AutoRefresh = true;
+		return new (newConfig);
+	}
+
+	public static Timer CreateArbitrary(TimerConfig Config=null, float updateInterval=.1f) {
+		TimerConfig newConfig = Config?.Clone() ?? new();
+		newConfig.TickRate = TickRate.Arbitrary;
+		newConfig.TickFrequency = updateInterval;
+
 		return new (newConfig);
 	}
 

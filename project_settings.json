@@ -1,5 +1,6 @@
 {
   "timer_plugin": {
-    "log_messages": true
+    "log_messages": true,
+    "monitor_events_time": 0.3
   }
 }
