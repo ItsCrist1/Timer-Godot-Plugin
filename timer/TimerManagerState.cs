@@ -15,12 +15,27 @@ public class TimerEventFireCount {
 	public uint OnTimeout { get; set; }
 	public uint OnStop { get; set; }
 
-    public void Reset()
-        => OnStart
-         = OnTick
-         = OnTimeout
-         = OnStop
-         = 0u;
+	public TimerEventFireCount(uint OnStart=0u, uint OnTick=0u, uint OnTimeout=0u, uint OnStop=0u) {
+		this.OnStart = OnStart;
+		this.OnTick = OnTick;
+		this.OnTimeout = OnTimeout;
+		this.OnStop = OnStop;
+	}
+
+	public void Reset()
+		=> OnStart
+		 = OnTick
+		 = OnTimeout
+		 = OnStop
+		 = 0u;
+
+	public static TimerEventFireCount operator +(TimerEventFireCount a, TimerEventFireCount b)
+		=> new (
+			a.OnStart + b.OnStart,
+			a.OnTick + b.OnTick,
+			a.OnTimeout + b.OnTimeout,
+			a.OnStop + b.OnStop
+		);
 }
 
 public class TimerManagerState {

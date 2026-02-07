@@ -11,7 +11,8 @@ public partial class TimerNode : Node {
     Timer timer;
 
     public override void _EnterTree() {
-        TimerConfig ??= new() { IsNode = true };
+        TimerConfig ??= new();
+        TimerConfig.IsNode = true;
         timer = TimerManager.Create(TimerConfig);
 
         if(timer == null) return;
@@ -37,6 +38,7 @@ public partial class TimerNode : Node {
 
     public bool IsGoing => timer?.IsGoing ?? false;
     public bool HasFinished => timer?.HasFinished ?? false;
+    public float PercentageDone => timer?.PercentageDone ?? 0f;
 
     void _OnStart() => EmitSignal(SignalName.OnStart);
     void _OnTick() => EmitSignal(SignalName.OnTick);

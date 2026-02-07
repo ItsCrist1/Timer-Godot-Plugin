@@ -124,4 +124,7 @@ public class Timer : IDisposable {
 
 	public bool HasFinished
 		=> !isPaused && Time <= 0f;
+
+	public float PercentageDone
+		=> Config.MaxTime == 0f ? 0f : HasFinished ? 1f : 1f - Time / Config.MaxTime;
 }
