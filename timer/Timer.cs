@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 
 using Godot;
 
@@ -8,39 +7,37 @@ public class Timer : IDisposable {
 
 	internal Timer tickSourceTimer;
 
-	LinkedListNode<Timer> timerListRef;
-
-	TimerConfig Config;
+	public TimerConfig Config {
+		get => _Config;
+		set {
+			if(isDisposed || value == null || !validateConfig(value)) return;
+			_Config = value;
+		}
+	}
 	public event Action OnStart, OnTick, OnTimeout, OnStop;
 	public float Time { get; set; }
 
+	TimerConfig _Config;
 	bool isPaused, isDisposed;
 
 	internal Timer(TimerConfig Config=null) {
 		this.Config = Config ?? new();
 
-		if(isDisposed = !validateConfig(this.Config)) return;
+		if(isDisposed = !validateConfig(_Config)) return;
 
-		if(Config.AutoStart) Time = Config.MaxTime;
+		if(_Config.AutoStart) Time = _Config.MaxTime;
 
-		timerListRef = TimerManager.RegisterTimer(
-			this,
-			this.Config.TickRate, 
-			this.Config.TickFrequency
-		);
-	}
-
-	public void Migrate(LinkedListNode<Timer> timerListRef)
-		=> this.timerListRef = timerListRef;
-
-	public void SetConfig(TimerConfig Config=null) {
-		if(isDisposed || Config == null || !validateConfig(Config)) return;
-		this.Config = Config;
+		TimerManager.RegisterTimer(this);
 	}
 
 	bool validateConfig(TimerConfig Config) {
 		if(Config.MaxTime < 0f) {
 			GD.PushError($"{GENERIC_ERROR_TIMER}:\nMaxTime is negative");
+			return false;
+		}
+
+		if(Config.TickFrequency < 0f) {
+			GD.PushError($"{GENERIC_ERROR_TIMER}:\nTickFrequency is negative");
 			return false;
 		}
 
@@ -51,8 +48,8 @@ public class Timer : IDisposable {
 
 	internal void Tick(float dt) {
 		if(isDisposed || isPaused || Time <= 0f
-		|| (!Config.TickOnPause && GameBridge.Instance?.Tree?.Paused == true)
-		|| (!Config.TickOnZeroTimeScale && Engine.TimeScale == 0f))
+		|| (!_Config.TickOnPause && GameBridge.Instance?.Tree?.Paused == true)
+		|| (!_Config.TickOnZeroTimeScale && Engine.TimeScale == 0f))
 			return;
 
 		Time -= dt;
@@ -61,8 +58,8 @@ public class Timer : IDisposable {
 		if(Time <= 0f) {
 			OnTimeout?.Invoke();
 
-			if(Config.AutoRefresh) Time += Config.MaxTime;
-			if(Config.DisposeOnTimeout) Dispose();
+			if(_Config.AutoRefresh) Time += _Config.MaxTime;
+			if(_Config.DisposeOnTimeout) Dispose();
 		}
 	}
 
@@ -73,11 +70,11 @@ public class Timer : IDisposable {
 
 		if(maxTime == 0f) {
 			OnTimeout?.Invoke();
-			if (Config.DisposeOnTimeout) Dispose();
+			if (_Config.DisposeOnTimeout) Dispose();
 			return;
 		}
 
-		Config.MaxTime = Time = maxTime ?? Config.MaxTime;
+		Config.MaxTime = Time = maxTime ?? _Config.MaxTime;
 
 		Resume();
 	}
@@ -108,9 +105,7 @@ public class Timer : IDisposable {
 		tickSourceTimer?.Dispose();
 		tickSourceTimer = null;
 
-		TimerManager.UnregisterTimer(this, Config.TickRate);
-
-		timerListRef?.List?.Remove(timerListRef);
+		TimerManager.UnregisterTimer(this);
 
 		OnStart = OnTick = OnTimeout = OnStop = null;
 		GC.SuppressFinalize(this);

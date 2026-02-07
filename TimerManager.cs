@@ -9,77 +9,102 @@ public partial class TimerManager : Node {
 	const string LOGGING_SETTING_KEY = "timer_plugin/log_messages";
 	const string META_SCAN_KEY = "timer_plugin_scanned"; // for reflection
 
-	const string GENERIC_LOG_TIMER_MANAGER = "Timer Manager Log";
-	const string GENERIC_LOG_TIMERS_NAME = "Normal";
-
 	const string PERFORMANCE_MONITOR_CATEGORY_NAME = "Timer";
-
 
 	public static TimerManager Instance { get; private set; }
 
-	// allows for declaration of timers before initialization in `_EnterTree`
-	static LinkedList<Timer> PendingTimers = new();
-	LinkedList<Timer> Timers = new();
-
 	static event Action<float> OnProcess, OnPhysicsProcess;
+	static event Action OnClear;
 
-	// for the reflection dispose on `_ExitTree` system
 	static Dictionary<Type, FieldInfo[]> timerScanFieldCache = new();
 	
+	static TimerManagerState state;
 	bool logMessages;
 
-	public static LinkedListNode<Timer> RegisterTimer(Timer timer, TickRate TickRate, float TickFrequency) {
-		switch(TickRate) {
-			case TickRate.Process: OnProcess += timer.Tick; break;
-			case TickRate.PhysicsProcess: OnPhysicsProcess += timer.Tick; break;
+	public static void RegisterTimer(Timer timer) {
+		bool m = timer.Config.DoMonitor;
+
+		switch(timer.Config.TickRate) {
+			case TickRate.Process:
+			OnProcess += timer.Tick;
+			if(m) ++state.TimerCount.Process;
+			break;
+
+			case TickRate.PhysicsProcess:
+			OnPhysicsProcess += timer.Tick;
+			if(m) ++state.TimerCount.Physics;
+			break;
 			
 			// a timer using an arbitrary source manages its own looping arbitrary timer
 			case TickRate.Arbitrary: {
 				Timer tickSourceTimer = CreateLooping (new() {
-					MaxTime = TickFrequency,
+					MaxTime = timer.Config.TickFrequency,
 					AutoStart = true,
-					TickOnPause = true
+					TickOnPause = true,
+					DoMonitor = false
 				});
 
-				tickSourceTimer.OnTimeout += () => timer.Tick(TickFrequency);
+				tickSourceTimer.OnTimeout += () => timer.Tick(timer.Config.TickFrequency);
 				timer.tickSourceTimer = tickSourceTimer;
+
+				if(m) ++state.TimerCount.Arbitrary;
 			} break;
 		}
 
-		return Instance == null 
-				? PendingTimers.AddLast(timer) 
-				: Instance.Timers.AddLast(timer);
-	}
+		OnClear += timer.Dispose;
 
-	public static void UnregisterTimer(Timer timer, TickRate TickRate) {
-		switch(TickRate) {
-			case TickRate.Process: OnProcess -= timer.Tick; break;
-			case TickRate.PhysicsProcess: OnPhysicsProcess -= timer.Tick; break;
+		if(!m) return;
 			
-			// case TickRate.Arbitrary: break;
-			// lifecycle of arbitrary timers *should* be handled by themselves...hopefully
-		}
+		state.TimerCount.IsNode += timer.Config.IsNode ? 1u : 0u;
+		state.TimerCount.AutoRefreshing += timer.Config.AutoRefresh ? 1u : 0u;
 	}
 
-	void MigratePendingTimers(LinkedList<Timer> PendingTimers, LinkedList<Timer> Timers, string timersLogName) {
-		foreach(Timer timer in PendingTimers)
-			timer.Migrate(Timers.AddLast(timer));
+	public static void UnregisterTimer(Timer timer) {
+		bool m = timer.Config.DoMonitor;
 
-		if(logMessages && PendingTimers.Count != 0) 
-			GD.Print($"{GENERIC_LOG_TIMER_MANAGER}:\n{timersLogName} timers moved from pending static list to active one: {PendingTimers.Count}");
+		switch(timer.Config.TickRate) {
+			case TickRate.Process: 
+			OnProcess -= timer.Tick;
+			if(m && state.TimerCount.Process > 0) --state.TimerCount.Process;
+			break;
 
-		PendingTimers.Clear();
+			case TickRate.PhysicsProcess: 
+			OnPhysicsProcess -= timer.Tick;
+			if(m && state.TimerCount.Physics > 0) --state.TimerCount.Physics;
+			break;
+			
+			// lifecycle of arbitrary timers *should* be handled by themselves...hopefully
+			case TickRate.Arbitrary: 
+			if(m && state.TimerCount.Arbitrary > 0) --state.TimerCount.Arbitrary; 
+			break;
+		}
+
+		OnClear -= timer.Dispose;
+
+		if(!m) return;
+
+		state.TimerCount.IsNode -= timer.Config.IsNode && state.TimerCount.IsNode > 0 ? 1u : 0u;
+		state.TimerCount.AutoRefreshing -= timer.Config.AutoRefresh && state.TimerCount.AutoRefreshing > 0 ? 1u : 0u;
 	}
 
 	void AddPerformanceMonitors() {
-		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Active_Count", Callable.From(() => Timers.Count));
+		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Total Count", Callable.From(() => state.TimerCount.Total));
+		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Process Count", Callable.From(() => state.TimerCount.Process));
+		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Physics Count", Callable.From(() => state.TimerCount.Physics));
+		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Arbitrary Count", Callable.From(() => state.TimerCount.Arbitrary));
+		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Is Node Count", Callable.From(() => state.TimerCount.IsNode));
+		Performance.AddCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Auto Refreshing Count", Callable.From(() => state.TimerCount.AutoRefreshing));
+	}
+
+	static TimerManager() {
+		state = new();
 	}
 
 	public override void _EnterTree() {
 		Instance = this;
-		ProcessMode = ProcessModeEnum.Always;
+		state ??= new();
 
-		MigratePendingTimers(PendingTimers, Instance.Timers, GENERIC_LOG_TIMERS_NAME);
+		ProcessMode = ProcessModeEnum.Always;
 
 		logMessages = (bool)ProjectSettings.GetSetting(LOGGING_SETTING_KEY);
 
@@ -92,33 +117,31 @@ public partial class TimerManager : Node {
 		OnProcess?.Invoke(dt);
 	}
 
-    public override void _PhysicsProcess(double delta) {
+	public override void _PhysicsProcess(double delta) {
 		float dt = (float)delta;
 
 		OnPhysicsProcess?.Invoke(dt);
-    }
-
-	void ClearTimers(LinkedList<Timer> Timers, string timersLogName) {
-		foreach(Timer timer in Timers)
-			timer.Dispose();
-
-		if(logMessages)
-			GD.Print($"{GENERIC_LOG_TIMER_MANAGER}:\n{timersLogName} timers have been cleared: {Timers.Count}");
-
-		Timers.Clear();
-	}
-
-	void RemovePerformanceMonitors() {
-    	Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Active_Count");
 	}
 
 	public override void _ExitTree() {
-		ClearTimers(Timers, GENERIC_LOG_TIMERS_NAME);
-
-		RemovePerformanceMonitors();
+		OnClear?.Invoke();
 
 		OnProcess = OnPhysicsProcess = null;
+		OnClear = null;
+		state = null;
+
 		Instance = null;
+
+		RemovePerformanceMonitors();
+	}
+
+	void RemovePerformanceMonitors() {
+		Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Total Count");
+		Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Process Count");
+		Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Physics Count");
+		Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Arbitrary Count");
+		Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Is Node Count");
+		Performance.RemoveCustomMonitor($"{PERFORMANCE_MONITOR_CATEGORY_NAME}/Auto Refreshing Count");
 	}
 	
 	public static void ScanRegisterTimers(Node owner) {
@@ -147,16 +170,16 @@ public partial class TimerManager : Node {
 	}
 
 	public static Timer Create(TimerConfig Config=null)
-		=> new (Config?.Duplicate() as TimerConfig ?? new());
+		=> new (Config?.Clone() ?? new());
 
 	public static Timer CreateLooping(TimerConfig Config=null) {
-		TimerConfig newConfig = Config?.Duplicate() as TimerConfig ?? new();
+		TimerConfig newConfig = Config?.Clone() ?? new();
 		newConfig.AutoRefresh = true;
 		return new (newConfig);
 	}
 
 	public static Timer CreateOneShotTimer(float maxTime, Action onTimeout, TimerConfig Config=null) {
-		TimerConfig newConfig = Config?.Duplicate() as TimerConfig ?? new();
+		TimerConfig newConfig = Config?.Clone() ?? new();
 		newConfig.MaxTime = maxTime;
 		newConfig.AutoStart = newConfig.DisposeOnTimeout = true;
 		

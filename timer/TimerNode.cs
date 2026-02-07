@@ -11,7 +11,7 @@ public partial class TimerNode : Node {
     Timer timer;
 
     public override void _EnterTree() {
-        TimerConfig ??= new();
+        TimerConfig ??= new() { IsNode = true };
         timer = TimerManager.Create(TimerConfig);
 
         if(timer == null) return;
