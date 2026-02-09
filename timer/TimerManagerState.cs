@@ -1,7 +1,5 @@
 public class TimerCount {
-	public uint Total {
-		get => Process + Physics + Arbitrary;
-	}
+	public uint Total => Process + Physics + Arbitrary;
 	public uint Process { get; set; }
 	public uint Physics { get; set; }
 	public uint Arbitrary { get; set; }

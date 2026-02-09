@@ -14,7 +14,10 @@ public class Timer : IDisposable {
 			_Config = value;
 		}
 	}
-	public event Action OnStart, OnTick, OnTimeout, OnStop;
+	public FastEvent OnStart = new(), 
+					 OnTick = new(), 
+					 OnTimeout = new(), 
+					 OnStop = new();
 	public float Time { get; set; }
 
 	TimerConfig _Config;
@@ -115,7 +118,10 @@ public class Timer : IDisposable {
 
 		TimerManager.UnregisterTimer(this);
 
-		OnStart = OnTick = OnTimeout = OnStop = null;
+		OnStart = new();
+		OnTick = new();
+		OnTimeout = new();
+		OnStop = new();
 		GC.SuppressFinalize(this);
 	}
 

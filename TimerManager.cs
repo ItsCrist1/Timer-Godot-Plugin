@@ -14,8 +14,9 @@ public partial class TimerManager : Node {
 
 	public static TimerManager Instance { get; private set; }
 
-	static event Action<float> OnProcess, OnPhysicsProcess;
-	static event Action OnClear;
+	static FastEvent<float> OnProcess = new(), 
+							OnPhysicsProcess = new();
+	static FastEvent OnClear = new();
 
 	Dictionary<string, Callable> Monitors;
 
@@ -183,8 +184,9 @@ public partial class TimerManager : Node {
 	public override void _ExitTree() {
 		OnClear?.Invoke();
 
-		OnProcess = OnPhysicsProcess = null;
-		OnClear = null;
+		OnProcess = new();
+		OnPhysicsProcess = new();
+		OnClear = new();
 
 		RegisterPerformanceMonitors(false);
 		Monitors = null;
