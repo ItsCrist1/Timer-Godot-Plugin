@@ -43,7 +43,7 @@ public partial class TimerManager : Node {
 			
 			// a timer using an arbitrary source manages its own looping arbitrary timer
 			case TickRate.Arbitrary: {
-				Timer tickSourceTimer = CreateLooping (new() {
+				Timer tickSourceTimer = CreateLooping(new() {
 					MaxTime = timer.Config.TickFrequency,
 					AutoStart = true,
 					TickOnPause = true,
@@ -143,25 +143,29 @@ public partial class TimerManager : Node {
 		timerScanFieldCache = new();
 	}
 
-	public override void _EnterTree() {
+	void InitializeStaticFields() {
 		Instance = this;
 
-		state ??= new();
 		tempState ??= new();
-
-		ProcessMode = ProcessModeEnum.Always;
-
-		logMessages = (bool)ProjectSettingsManager.Get(LOGGING_SETTING_KEY);
-
+		state ??= new();
+		
 		InitializeMonitors();
 		RegisterPerformanceMonitors();
 
+		logMessages = (bool)ProjectSettingsManager.Get(LOGGING_SETTING_KEY);
+	}
+
+	public override void _EnterTree() {
+		ProcessMode = ProcessModeEnum.Always;
+
 		eventUpdateTimer = CreateArbitrary(
-			new() { AlwaysTick = true },
+			new() { AlwaysTick = true, DoMonitor = false },
 			(float)ProjectSettingsManager.Get(MONITOR_EVENTS_SETTINGS_KEY)
 		);
 
 		eventUpdateTimer.OnTick += onTempEventsReset;
+
+		InitializeStaticFields();
 	}
 
 	void onTempEventsReset() {
@@ -169,31 +173,31 @@ public partial class TimerManager : Node {
 		tempState.TimerEventFireCount.Reset();
 	}
 
-	public override void _Process(double delta) {
-		float dt = (float)delta;
+	public override void _Process(double delta)
+		=> OnProcess?.Invoke((float)delta);
 
-		OnProcess?.Invoke(dt);
-	}
-
-	public override void _PhysicsProcess(double delta) {
-		float dt = (float)delta;
-
-		OnPhysicsProcess?.Invoke(dt);
-	}
+	public override void _PhysicsProcess(double delta)
+		=> OnPhysicsProcess?.Invoke((float)delta);
 
 	public override void _ExitTree() {
 		OnClear?.Invoke();
+
+		RegisterPerformanceMonitors(false);
+
+		eventUpdateTimer.Dispose();
+
+		DeinitializeStaticFields();
+	}
+
+	void DeinitializeStaticFields() {
+		state = new();
+		tempState = new();
 
 		OnProcess = new();
 		OnPhysicsProcess = new();
 		OnClear = new();
 
-		RegisterPerformanceMonitors(false);
 		Monitors = null;
-
-		eventUpdateTimer.Dispose();
-
-		state = tempState = null;
 		Instance = null;
 	}
 	
@@ -245,7 +249,7 @@ public partial class TimerManager : Node {
 		return new (newConfig);
 	}
 
-	public static Timer CreateOneShotTimer(float maxTime, Action onTimeout, TimerConfig Config=null) {
+	public static Timer CreateOneShot(float maxTime, Action onTimeout, TimerConfig Config=null) {
 		TimerConfig newConfig = Config?.Clone() ?? new();
 		newConfig.MaxTime = maxTime;
 		newConfig.AutoStart = newConfig.DisposeOnTimeout = true;

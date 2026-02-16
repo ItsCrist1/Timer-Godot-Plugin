@@ -8,10 +8,10 @@ public class Timer : IDisposable {
 	internal Timer tickSourceTimer;
 
 	public TimerConfig Config {
-		get => _Config;
+		get;
 		set {
 			if(isDisposed || value == null || !validateConfig(value)) return;
-			_Config = value;
+			field = value;
 		}
 	}
 	public FastEvent OnStart = new(), 
@@ -20,15 +20,14 @@ public class Timer : IDisposable {
 					 OnStop = new();
 	public float Time { get; set; }
 
-	TimerConfig _Config;
 	bool isPaused, isDisposed;
 
 	internal Timer(TimerConfig Config=null) {
 		this.Config = Config ?? new();
 
-		if(isDisposed = !validateConfig(_Config)) return;
+		if(isDisposed = !validateConfig(this.Config)) return;
 
-		if(_Config.AutoStart) Time = _Config.MaxTime;
+		if(this.Config.AutoStart) Time = this.Config.MaxTime;
 
 		TimerManager.RegisterTimer(this);
 	}
@@ -53,25 +52,25 @@ public class Timer : IDisposable {
 		if(isDisposed)
 			return;
 
-		if(_Config.AlwaysTick) {
+		if(Config.AlwaysTick) {
 			OnTick?.Invoke();
 			return;
 		}
 
 		if(isPaused || Time <= 0f
-		|| (!_Config.TickOnPause && GameBridge.Instance?.Tree?.Paused == true)
-		|| (!_Config.TickOnZeroTimeScale && Engine.TimeScale == 0f))
+		|| (!Config.TickOnPause && GameBridge.Instance?.Tree?.Paused == true)
+		|| (!Config.TickOnZeroTimeScale && Engine.TimeScale == 0f))
 			return;
 
 		Time -= dt;
-		OnTick?.Invoke();
 
 		if(Time <= 0f) {
 			OnTimeout?.Invoke();
 
-			if(_Config.AutoRefresh) Time += _Config.MaxTime;
-			if(_Config.DisposeOnTimeout) Dispose();
-		}
+			if(Config.AutoRefresh) Time += Config.MaxTime;
+			if(Config.DisposeOnTimeout) Dispose();
+		} else
+			OnTick?.Invoke();
 	}
 
 	public void Start(float? maxTime=null) {
@@ -80,12 +79,13 @@ public class Timer : IDisposable {
 		OnStart?.Invoke();
 
 		if(maxTime == 0f) {
+			// we don't account for `Config.AutoStart` because it'd just be an infinite recursive loop
 			OnTimeout?.Invoke();
-			if (_Config.DisposeOnTimeout) Dispose();
+			if(Config.DisposeOnTimeout) Dispose();
 			return;
 		}
 
-		Config.MaxTime = Time = maxTime ?? _Config.MaxTime;
+		Config.MaxTime = Time = maxTime ?? Config.MaxTime;
 
 		Resume();
 	}
@@ -106,7 +106,6 @@ public class Timer : IDisposable {
 		OnStop?.Invoke();
 
 		Time = 0f;
-		Resume();
 	}
 
 	public void Dispose() {
