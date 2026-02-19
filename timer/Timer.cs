@@ -14,9 +14,9 @@ public class Timer : IDisposable {
 			field = value;
 		}
 	}
-	public FastEvent OnStart = new(), 
-					 OnTick = new(), 
-					 OnTimeout = new(), 
+	public FastEvent OnStart = new(),
+					 OnTick = new(),
+					 OnTimeout = new(),
 					 OnStop = new();
 	public float Time { get; set; }
 
@@ -45,8 +45,6 @@ public class Timer : IDisposable {
 
 		return true;
 	}
-
-	~Timer() => Dispose();
 
 	internal void Tick(float dt) {
 		if(isDisposed)

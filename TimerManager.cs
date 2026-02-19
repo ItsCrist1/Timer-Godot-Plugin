@@ -5,14 +5,15 @@ using System.Collections.Generic;
 
 using Godot;
 
+/// <summary>
+/// Global singleton
+/// </summary>
 public partial class TimerManager : Node {
 	const string LOGGING_SETTING_KEY = "timer_plugin/log_messages";
 	const string MONITOR_EVENTS_SETTINGS_KEY = "timer_plugin/monitor_events_time";
 	const string META_SCAN_KEY = "timer_plugin_scanned"; // for reflection
 
 	const string PERFORMANCE_MONITOR_CATEGORY_NAME = "Timer";
-
-	public static TimerManager Instance { get; private set; }
 
 	static FastEvent<float> OnProcess = new(), 
 							OnPhysicsProcess = new();
@@ -144,15 +145,13 @@ public partial class TimerManager : Node {
 	}
 
 	void InitializeStaticFields() {
-		Instance = this;
-
 		tempState ??= new();
 		state ??= new();
 		
 		InitializeMonitors();
 		RegisterPerformanceMonitors();
 
-		logMessages = (bool)ProjectSettingsManager.Get(LOGGING_SETTING_KEY);
+		logMessages = (bool)ProjectSettings.GetSetting(LOGGING_SETTING_KEY);
 	}
 
 	public override void _EnterTree() {
@@ -160,7 +159,7 @@ public partial class TimerManager : Node {
 
 		eventUpdateTimer = CreateArbitrary(
 			new() { AlwaysTick = true, DoMonitor = false },
-			(float)ProjectSettingsManager.Get(MONITOR_EVENTS_SETTINGS_KEY)
+			(float)ProjectSettings.GetSetting(MONITOR_EVENTS_SETTINGS_KEY)
 		);
 
 		eventUpdateTimer.OnTick += onTempEventsReset;
@@ -193,12 +192,11 @@ public partial class TimerManager : Node {
 		state = new();
 		tempState = new();
 
-		OnProcess = new();
-		OnPhysicsProcess = new();
-		OnClear = new();
+		OnProcess.Clear();
+		OnPhysicsProcess.Clear();
+		OnClear.Clear();
 
 		Monitors = null;
-		Instance = null;
 	}
 	
 	public static void ScanRegisterTimers(Node owner) {
@@ -226,37 +224,38 @@ public partial class TimerManager : Node {
 			}
 	}
 
-	public static Timer Create(TimerConfig Config=null)
-		=> new (Config?.Clone() ?? new());
-
-	public static Timer Create(float MaxTime, TimerConfig Config=null) {
+	public static Timer Create(TimerConfig Config=null, float MaxTime=1f) {
 		TimerConfig newConfig = Config?.Clone() ?? new();
 		newConfig.MaxTime = MaxTime;
 		return new (newConfig);
 	}
 
-	public static Timer CreateLooping(TimerConfig Config=null) {
+	public static Timer CreateLooping(TimerConfig Config=null, float MaxTime=1f) {
 		TimerConfig newConfig = Config?.Clone() ?? new();
+		newConfig.MaxTime = MaxTime;
 		newConfig.AutoRefresh = true;
 		return new (newConfig);
 	}
 
-	public static Timer CreateArbitrary(TimerConfig Config=null, float updateInterval=.1f) {
+	public static Timer CreateArbitrary(TimerConfig Config=null, float MaxTime=1f, float updateInterval=.1f) {
 		TimerConfig newConfig = Config?.Clone() ?? new();
+		newConfig.MaxTime = MaxTime;
+
 		newConfig.TickRate = TickRate.Arbitrary;
 		newConfig.TickFrequency = updateInterval;
 
 		return new (newConfig);
 	}
 
-	public static Timer CreateOneShot(float maxTime, Action onTimeout, TimerConfig Config=null) {
+	public static Timer CreateOneShot(TimerConfig Config=null, float MaxTime=1f, Action onTimeout=null) {
 		TimerConfig newConfig = Config?.Clone() ?? new();
-		newConfig.MaxTime = maxTime;
+		newConfig.MaxTime = MaxTime;
 		newConfig.AutoStart = newConfig.DisposeOnTimeout = true;
 		
 		Timer timer = new (newConfig);
 
-		timer.OnTimeout += onTimeout;
+		if(onTimeout != null)
+			timer.OnTimeout += onTimeout;
 
 		return timer;
 	}
