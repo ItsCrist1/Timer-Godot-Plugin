@@ -213,6 +213,8 @@ public partial class TimerManager : Node {
 
 		foreach(FieldInfo field in fields)
 			if(field.GetValue(owner) is Timer timer) {
+				timer ??= Create();
+
 				Action disposeAction = null;
 				
 				disposeAction = () => {
