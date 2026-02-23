@@ -4,7 +4,6 @@ using Godot;
 [Tool]
 public partial class TimerPluginInitializer : EditorPlugin {
 	const string SINGLETON_NAME = "TimerManager";
-    const string SINGLETON_SCRIPT = "TimerManager.cs";
 
 	const string CUSTOM_TYPE_NAME = "Custom Timer";
 	const string CUSTOM_TYPE_SCRIPT = "timer/TimerNode.cs";
@@ -15,7 +14,7 @@ public partial class TimerPluginInitializer : EditorPlugin {
 
 		AddAutoloadSingleton(
 			SINGLETON_NAME,
-			path.PathJoin(SINGLETON_SCRIPT)
+			path.PathJoin($"{SINGLETON_NAME}.cs")
 		);
 
         AddCustomType(
