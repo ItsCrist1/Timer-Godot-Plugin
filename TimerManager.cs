@@ -109,6 +109,11 @@ public partial class TimerManager : Node {
 		state.TimerCount.AutoRefreshing -= timer.Config.AutoRefresh && state.TimerCount.AutoRefreshing > 0 ? 1u : 0u;
 	}
 
+	public static void ReRegisterTimer(Timer timer) {
+		UnregisterTimer(timer);
+		RegisterTimer(timer);
+	}
+
 	void InitializeMonitors()
 		=> Monitors ??= new() {
 			{ "Total Count", Callable.From(() => state.TimerCount.Total) },

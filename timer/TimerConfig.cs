@@ -15,7 +15,14 @@ public partial class TimerConfig : Resource {
 
     
     [ExportGroup("Tick Rate")]
-    [Export] public TickRate TickRate = TickRate.Process;
+    [Export] public TickRate TickRate {
+        get;
+        set {
+            field = value;
+            EmitChanged();
+        }
+    } = TickRate.Process;
+
     [Export] public float TickFrequency = .1f;
 
     public bool IsNode { get; set; }

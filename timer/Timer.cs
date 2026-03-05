@@ -10,8 +10,11 @@ public class Timer : IDisposable {
 	public TimerConfig Config {
 		get;
 		set {
-			if(isDisposed || value == null || !validateConfig(value)) return;
-			field = value;
+            field?.Changed -= OnConfigChanged;
+			field = value ?? new();
+
+			if(isDisposed || !handleConfig(field)) return;
+			field?.Changed += OnConfigChanged;
 		}
 	}
 	public FastEvent OnStart = new(),
@@ -22,17 +25,22 @@ public class Timer : IDisposable {
 
 	bool isPaused, isDisposed;
 
+	TickRate prevTickRate;
+
+	void OnConfigChanged() {
+    	if(!isDisposed) 
+        	handleConfig(Config);
+	}
+
 	internal Timer(TimerConfig Config=null) {
 		this.Config = Config ?? new();
 
-		if(isDisposed = !validateConfig(this.Config)) return;
+		if(isDisposed = !handleConfig(this.Config, true)) return;
 
 		if(this.Config.AutoStart) Time = this.Config.MaxTime;
-
-		TimerManager.RegisterTimer(this);
 	}
 
-	bool validateConfig(TimerConfig Config) {
+	bool handleConfig(TimerConfig Config, bool firstRun=false) {
 		if(Config.MaxTime < 0f) {
 			GD.PushError($"{GENERIC_ERROR_TIMER}:\nMaxTime is negative");
 			return false;
@@ -42,6 +50,13 @@ public class Timer : IDisposable {
 			GD.PushError($"{GENERIC_ERROR_TIMER}:\nTickFrequency is negative");
 			return false;
 		}
+
+		if(firstRun)
+			TimerManager.RegisterTimer(this);
+		else if(prevTickRate != Config.TickRate)
+			TimerManager.ReRegisterTimer(this);
+		
+		prevTickRate = Config.TickRate;
 
 		return true;
 	}
@@ -109,6 +124,8 @@ public class Timer : IDisposable {
 	public void Dispose() {
 		if(isDisposed) return;
 		isDisposed = true;
+
+		Config.Changed -= OnConfigChanged;
 
 		tickSourceTimer?.Dispose();
 		tickSourceTimer = null;
