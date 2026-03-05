@@ -26,6 +26,7 @@ public class Timer : IDisposable {
 	bool isPaused, isDisposed;
 
 	TickRate prevTickRate;
+	float prevTickFrequency;
 
 	void OnConfigChanged() {
     	if(!isDisposed) 
@@ -53,10 +54,12 @@ public class Timer : IDisposable {
 
 		if(firstRun)
 			TimerManager.RegisterTimer(this);
-		else if(prevTickRate != Config.TickRate)
+		else if(prevTickRate != Config.TickRate
+		|| prevTickFrequency != Config.TickFrequency)
 			TimerManager.ReRegisterTimer(this);
 		
 		prevTickRate = Config.TickRate;
+		prevTickFrequency = Config.TickFrequency;
 
 		return true;
 	}

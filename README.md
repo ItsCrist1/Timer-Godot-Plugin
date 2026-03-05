@@ -1,6 +1,6 @@
 # Timer
 
-![Version](https://img.shields.io/badge/version-4.2.6-blue?logo=V) ![MIT](https://img.shields.io/badge/License-MIT-brightgreen?logo=Baserow) ![Godot Plugin](https://img.shields.io/badge/Godot-Plugin-cyan?logo=godotengine)
+![Version](https://img.shields.io/badge/version-4.2.7-blue?logo=V) ![MIT](https://img.shields.io/badge/License-MIT-brightgreen?logo=Baserow) ![Godot Plugin](https://img.shields.io/badge/Godot-Plugin-cyan?logo=godotengine)
 
 A performant and comprehensive timer system for Godot 4.x C#
 

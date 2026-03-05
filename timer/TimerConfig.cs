@@ -23,7 +23,13 @@ public partial class TimerConfig : Resource {
         }
     } = TickRate.Process;
 
-    [Export] public float TickFrequency = .1f;
+    [Export] public float TickFrequency {
+        get;
+        set {
+            field = value;
+            EmitChanged();
+        }
+    } = .1f;
 
     public bool IsNode { get; set; }
     public bool DoMonitor { get; set; } = true;

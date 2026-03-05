@@ -89,9 +89,9 @@ public partial class TimerManager : Node {
 			OnPhysicsProcess -= timer.Tick;
 			if(m && state.TimerCount.Physics > 0) --state.TimerCount.Physics;
 			break;
-			
-			// lifecycle of arbitrary timers *should* be handled by themselves...hopefully
+						
 			case TickRate.Arbitrary: 
+			timer.tickSourceTimer?.Dispose();
 			if(m && state.TimerCount.Arbitrary > 0) --state.TimerCount.Arbitrary; 
 			break;
 		}
